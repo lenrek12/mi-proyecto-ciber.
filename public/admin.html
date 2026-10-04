@@ -1,34 +1,144 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>Panel de Registros</title>
-    <style>
-        body { font-family: monospace; background: #111; color: #00ff00; padding: 20px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th, td { border: 1px solid #00ff00; padding: 8px; text-align: left; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panel de Control - Monitoreo</title>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #f8fafc; padding: 20px; margin: 0; }
+    .container { max-width: 900px; margin: 30px auto; }
+    .card { background: #1e293b; padding: 25px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); margin-top: 20px; }
+    h2, h3 { margin-top: 0; color: #38bdf8; }
+    input[type="password"] { padding: 12px; width: 65%; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white; font-size: 16px; }
+    button { padding: 12px 20px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s; }
+    button:hover { background: #1d4ed8; }
+    .btn-download { background: #10b981; margin-left: 10px; }
+    .btn-download:hover { background: #059669; }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #334155; padding: 12px; text-align: left; }
+    th { background: #0f172a; color: #94a3b8; }
+    tr:nth-child(even) { background: #162032; }
+    .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+    .badge-celular { background: #8b5cf6; color: white; }
+    .badge-pc { background: #3b82f6; color: white; }
+    .badge-tablet { background: #f59e0b; color: white; }
+    .hidden { display: none; }
+    .error { color: #ef4444; margin-top: 10px; font-weight: bold; }
+  </style>
 </head>
 <body>
-    <h1>[+] Registros de Conexión (IP / Fecha)</h1>
-    <table>
+  <div class="container">
+    <h2>🔒 Panel de Monitoreo Oculto</h2>
+
+    <!-- Formulario de Contraseña -->
+    <div id="login-box" class="card">
+      <p>Ingresa la contraseña para acceder a los registros:</p>
+      <input type="password" id="passInput" placeholder="Contraseña de acceso" onkeypress="if(event.key==='Enter') verificarPassword()">
+      <button onclick="verificarPassword()">Ingresar</button>
+      <p id="errorMsg" class="error hidden">❌ Contraseña incorrecta</p>
+    </div>
+
+    <!-- Panel Principal de Datos -->
+    <div id="admin-panel" class="card hidden">
+      <div class="toolbar">
+        <h3>Registros Capturados (<span id="total-count">0</span>)</h3>
+        <div>
+          <button onclick="cargarIPs()">🔄 Actualizar</button>
+          <button class="btn-download" onclick="descargarTXT()">📥 Descargar .txt</button>
+        </div>
+      </div>
+
+      <table>
         <thead>
-            <tr><th>#</th><th>IP Visitante</th><th>Fecha y Hora</th></tr>
+          <tr>
+            <th>#</th>
+            <th>Dirección IP</th>
+            <th>Fecha / Hora</th>
+            <th>Dispositivo</th>
+          </tr>
         </thead>
-        <tbody id="logs"></tbody>
-    </table>
-    <script>
-        async function fetchLogs() {
-            const res = await fetch('/api/logs');
-            const data = await res.json();
-            const tbody = document.getElementById('logs');
-            tbody.innerHTML = '';
-            data.forEach((log, i) => {
-                tbody.innerHTML += `<tr><td>${i+1}</td><td>${log.ip}</td><td>${log.date}</td></tr>`;
-            });
+        <tbody id="tabla-ips"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    let claveGuardada = '';
+
+    async function verificarPassword() {
+      const pass = document.getElementById('passInput').value;
+      const res = await fetch('/api/login-admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pass })
+      });
+
+      if (res.ok) {
+        claveGuardada = pass;
+        document.getElementById('login-box').classList.add('hidden');
+        document.getElementById('admin-panel').classList.remove('hidden');
+        cargarIPs();
+      } else {
+        document.getElementById('errorMsg').classList.remove('hidden');
+      }
+    }
+
+    async function cargarIPs() {
+      const res = await fetch('/api/obtener-ips', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: claveGuardada })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        document.getElementById('total-count').innerText = data.length;
+        const tbody = document.getElementById('tabla-ips');
+        tbody.innerHTML = '';
+
+        if(data.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No hay registros capturados aún.</td></tr>';
+          return;
         }
-        fetchLogs();
-        setInterval(fetchLogs, 3000);
-    </script>
+
+        data.forEach((reg, index) => {
+          let badgeClass = 'badge-pc';
+          if (reg.dispositivo === 'Celular') badgeClass = 'badge-celular';
+          if (reg.dispositivo === 'Tablet') badgeClass = 'badge-tablet';
+
+          tbody.innerHTML += `
+            <tr>
+              <td>${index + 1}</td>
+              <td><strong style="color:#38bdf8;">${reg.ip}</strong></td>
+              <td>${reg.fecha}</td>
+              <td><span class="badge ${badgeClass}">${reg.dispositivo}</span></td>
+            </tr>
+          `;
+        });
+      }
+    }
+
+    async function descargarTXT() {
+      const res = await fetch('/api/descargar-txt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: claveGuardada })
+      });
+
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = "registros_ip.txt";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } else {
+        alert('Error al descargar el archivo .txt');
+      }
+    }
+  </script>
 </body>
 </html>
